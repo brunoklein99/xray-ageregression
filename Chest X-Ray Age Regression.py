@@ -1,3 +1,4 @@
+from functools import partial
 from math import ceil
 from os.path import join
 
@@ -6,16 +7,25 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from keras import Model
-from keras.applications import VGG16
+from keras.applications import VGG16, ResNet50
 from keras.callbacks import TensorBoard
 from keras.layers import Dense, Flatten, Dropout
 from keras.optimizers import SGD
 from keras.preprocessing import image
+import keras.backend as K
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
 from math import pow
+from sklearn.utils import class_weight
 
 import pandas_utils
+
+
+def get_age_weights(values: np.ndarray):
+    i = np.unique(values)
+    x = class_weight.compute_class_weight('balanced', i, values)
+    return x
+
 
 np.random.seed(0)
 tf.set_random_seed(0)
@@ -36,16 +46,26 @@ frame_train_valid = filter_by_filenames(frame, train_valid_names)
 frame_test = filter_by_filenames(frame, test_names)
 
 frame_train, frame_valid = train_test_split(frame_train_valid, test_size=0.2, random_state=0)
-frame_train.head()
+print(frame_train.head())
 
-frame_train = pandas_utils.oversample(frame_train, column='Patient Age')
+# frame_train = pandas_utils.oversample(frame_train, column='Patient Age')
 frame_train = shuffle(frame_train)
+
+ages = frame_train['Patient Age'].values
+age_weights = get_age_weights(ages)
+pred = np.expand_dims(np.random.randint(ages.min(), ages.max() + 1, size=len(ages)), axis=-1)
+
 
 print('train_size', len(frame_train))
 print('valid_size', len(frame_valid))
 print('test_size', len(frame_test))
 
 batch_size = 128
+
+
+def weighted_mae(y_true, y_pred, weights):
+    x = K.mean(K.abs(y_pred - y_true), axis=-1)
+    return x
 
 
 def get_generator(f, params):
@@ -59,6 +79,8 @@ def get_generator(f, params):
             x = x.astype(np.float32)
             x -= 126.95534595
             x /= 63.95665607
+            x -= np.mean(x)
+            x /= np.std(x)
 
             if params['flip_horizontal']:
                 if np.random.rand() < 0.5:
@@ -100,8 +122,10 @@ def train(params):
     drop = params['dropout']
     if drop > 0:
         x = Dropout(drop)(x)
-    x = Dense(4096, activation='relu', name='fc1')(x)
     x = Dense(4096, activation='relu', name='fc2')(x)
+    x = Dense(1024, activation='relu', name='fc3')(x)
+    x = Dense(512, activation='relu', name='fc4')(x)
+    x = Dense(128, activation='relu', name='fc5')(x)
     x = Dense(1, activation='sigmoid', name='predictions')(x)
     model = Model(model.input, outputs=x)
 
@@ -110,7 +134,9 @@ def train(params):
 
     opt = SGD(lr=lr, momentum=0.9, decay=decay)
 
-    model.compile(optimizer=opt, loss='mean_absolute_error')
+    loss_fn = partial(weighted_mae, weights=age_weights)
+
+    model.compile(optimizer=opt, loss=loss_fn)
 
     steps_train = int(ceil(len(frame_train) / batch_size))
     steps_valid = int(ceil(len(frame_valid) / batch_size))
@@ -131,21 +157,32 @@ def train(params):
 
 # print(model.evaluate_generator(gen_test, steps=steps_test))
 if __name__ == "__main__":
-    results = []
-    for _ in range(50):
-        params = {
-            'size': np.random.choice([100, 125, 150]),
-            'dropout': np.random.uniform(0, 0.5),
-            'lr_exp': np.random.randint(1, 3),
-            'decay_exp': np.random.randint(3, 6),
-            'flip_horizontal': np.random.choice([True, False]),
-            'rotation': np.random.uniform(0, 10),
-            'shift_w': np.random.uniform(0, 0.1),
-            'shift_h': np.random.uniform(0, 0.1)
-        }
-        print('begin train:', params)
-        results.append((train(params), params))
-        print('end train:', params)
-    results = sorted(results, reverse=True)
-    print('results:')
-    print(results)
+    params = {
+        'size': 100,
+        'dropout': 0,
+        'lr_exp': 2,
+        'decay_exp': 5,
+        'flip_horizontal': True,
+        'rotation': 0,
+        'shift_w': 0,
+        'shift_h': 0,
+    }
+    print(train(params))
+    # results = []
+    # for _ in range(50):
+    #     params = {
+    #         'size': np.random.choice([100, 125, 150]),
+    #         'dropout': np.random.uniform(0, 0.5),
+    #         'lr_exp': np.random.randint(1, 3),
+    #         'decay_exp': np.random.randint(3, 6),
+    #         'flip_horizontal': np.random.choice([True, False]),
+    #         'rotation': np.random.uniform(0, 10),
+    #         'shift_w': np.random.uniform(0, 0.1),
+    #         'shift_h': np.random.uniform(0, 0.1)
+    #     }
+    #     print('begin train:', params)
+    #     results.append((train(params), params))
+    #     print('end train:', params)
+    # results = sorted(results, reverse=True)
+    # print('results:')
+    # print(results)
