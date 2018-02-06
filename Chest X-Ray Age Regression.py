@@ -95,8 +95,8 @@ def get_generator(f, params):
             x -= np.mean(x)
             x /= np.std(x)
 
-            cv2.imshow('', x[:, :, 0])
-            cv2.waitKey()
+            # cv2.imshow('', x[:, :, 0])
+            # cv2.waitKey()
 
             if params['flip_horizontal']:
                 if np.random.rand() < 0.5:
