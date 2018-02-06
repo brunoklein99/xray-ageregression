@@ -6,11 +6,12 @@ import cv2
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+import keras
 from keras import Model
 from keras.applications import VGG16, ResNet50
 from keras.callbacks import TensorBoard
 from keras.layers import Dense, Flatten, Dropout
-from keras.optimizers import SGD
+from keras.optimizers import SGD, Adam
 from keras.preprocessing import image
 import keras.backend as K
 from sklearn.model_selection import train_test_split
@@ -53,7 +54,14 @@ frame_train = shuffle(frame_train)
 
 ages = frame_train['Patient Age'].values
 age_weights = get_age_weights(ages)
-pred = np.expand_dims(np.random.randint(ages.min(), ages.max() + 1, size=len(ages)), axis=-1)
+# y_pred = tf.constant(ages[:128])
+# y_true = tf.constant(ages[:128])
+# sess = tf.Session()
+# mask = tf.one_hot(y_true, len(age_weights))
+# mask = mask * tf.constant(age_weights, dtype=tf.float32)
+# mask = tf.reduce_max(mask, axis=-1)
+# mask = sess.run(mask)
+
 
 
 print('train_size', len(frame_train))
@@ -64,7 +72,12 @@ batch_size = 128
 
 
 def weighted_mae(y_true, y_pred, weights):
-    x = K.mean(K.abs(y_pred - y_true), axis=-1)
+    mask = tf.one_hot(tf.cast(y_true, dtype=tf.uint8), len(age_weights))
+    mask = mask * tf.constant(age_weights, dtype=tf.float32)
+    mask = tf.reduce_max(mask, axis=-1)
+    x = tf.abs(y_pred - y_true)
+    x = x * mask
+    x = tf.reduce_mean(x, axis=-1)
     return x
 
 
@@ -81,6 +94,9 @@ def get_generator(f, params):
             x /= 63.95665607
             x -= np.mean(x)
             x /= np.std(x)
+
+            cv2.imshow('', x[:, :, 0])
+            cv2.waitKey()
 
             if params['flip_horizontal']:
                 if np.random.rand() < 0.5:
@@ -132,11 +148,11 @@ def train(params):
     lr = pow(10, -params['lr_exp'])
     decay = pow(10, -params['decay_exp'])
 
-    opt = SGD(lr=lr, momentum=0.9, decay=decay)
+    opt = Adam(lr=lr, decay=decay)#SGD(lr=lr, momentum=0.9, decay=decay)
 
     loss_fn = partial(weighted_mae, weights=age_weights)
 
-    model.compile(optimizer=opt, loss=loss_fn)
+    model.compile(optimizer=opt, loss=loss_fn, metrics=[keras.metrics.mae])
 
     steps_train = int(ceil(len(frame_train) / batch_size))
     steps_valid = int(ceil(len(frame_valid) / batch_size))
@@ -159,8 +175,8 @@ def train(params):
 if __name__ == "__main__":
     params = {
         'size': 100,
-        'dropout': 0,
-        'lr_exp': 2,
+        'dropout': 0.2,
+        'lr_exp': 3,
         'decay_exp': 5,
         'flip_horizontal': True,
         'rotation': 0,
