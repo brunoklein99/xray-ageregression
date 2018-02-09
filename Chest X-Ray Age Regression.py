@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import keras
+import plot
 from keras import Model
 from keras.applications import VGG16, ResNet50
 from keras.callbacks import TensorBoard
@@ -49,8 +50,10 @@ frame_test = filter_by_filenames(frame, test_names)
 frame_train, frame_valid = train_test_split(frame_train_valid, test_size=0.2, random_state=0)
 print(frame_train.head())
 
+frame_train = pandas_utils.oversample_age_decades(frame_train)
 # frame_train = pandas_utils.oversample(frame_train, column='Patient Age')
 frame_train = shuffle(frame_train)
+# plot.plot_age_frame(frame_train)
 
 ages = frame_train['Patient Age'].values
 age_weights = get_age_weights(ages)
@@ -63,22 +66,11 @@ age_weights = get_age_weights(ages)
 # mask = sess.run(mask)
 
 
-
 print('train_size', len(frame_train))
 print('valid_size', len(frame_valid))
 print('test_size', len(frame_test))
 
-batch_size = 128
-
-
-def weighted_mae(y_true, y_pred, weights):
-    mask = tf.one_hot(tf.cast(y_true, dtype=tf.uint8), len(age_weights))
-    mask = mask * tf.constant(age_weights, dtype=tf.float32)
-    mask = tf.reduce_max(mask, axis=-1)
-    x = tf.abs(y_pred - y_true)
-    x = x * mask
-    x = tf.reduce_mean(x, axis=-1)
-    return x
+batch_size = 32
 
 
 def get_generator(f, params):
@@ -133,14 +125,14 @@ def train(params):
     gen_valid = batch_generator(get_generator(frame_valid, params), batch_size, len(frame_valid), params)
     gen_test = batch_generator(get_generator(frame_test, params), batch_size, len(frame_test), params)
 
-    model = VGG16(include_top=False, weights=None, input_shape=(params['size'], params['size'], 1))
+    model = ResNet50(include_top=False, weights=None, input_shape=(params['size'], params['size'], 1))
     x = Flatten(name='flatten')(model.output)
     drop = params['dropout']
     if drop > 0:
         x = Dropout(drop)(x)
     x = Dense(4096, activation='relu', name='fc2')(x)
-    x = Dense(1024, activation='relu', name='fc3')(x)
-    x = Dense(512, activation='relu', name='fc4')(x)
+    # x = Dense(1024, activation='relu', name='fc3')(x)
+    # x = Dense(512, activation='relu', name='fc4')(x)
     x = Dense(128, activation='relu', name='fc5')(x)
     x = Dense(1, activation='sigmoid', name='predictions')(x)
     model = Model(model.input, outputs=x)
@@ -148,24 +140,22 @@ def train(params):
     lr = pow(10, -params['lr_exp'])
     decay = pow(10, -params['decay_exp'])
 
-    opt = Adam(lr=lr, decay=decay)#SGD(lr=lr, momentum=0.9, decay=decay)
+    opt = SGD(lr=lr, momentum=0.9, decay=decay)
 
-    loss_fn = partial(weighted_mae, weights=age_weights)
-
-    model.compile(optimizer=opt, loss=loss_fn, metrics=[keras.metrics.mae])
+    model.compile(optimizer=opt, loss=keras.metrics.mae)
 
     steps_train = int(ceil(len(frame_train) / batch_size))
     steps_valid = int(ceil(len(frame_valid) / batch_size))
     steps_test = int(ceil(len(frame_test) / batch_size))
 
-    tensorboard = TensorBoard()
+    # tensorboard = TensorBoard(histogram_freq=1, batch_size=batch_size, write_grads=True)
 
     loss = model.fit_generator(gen_train,
                                steps_per_epoch=steps_train,
                                epochs=5,
                                validation_data=gen_valid,
                                validation_steps=steps_valid,
-                               callbacks=[tensorboard],
+                               # callbacks=[tensorboard],
                                )
 
     return loss
@@ -174,9 +164,9 @@ def train(params):
 # print(model.evaluate_generator(gen_test, steps=steps_test))
 if __name__ == "__main__":
     params = {
-        'size': 100,
+        'size': 224,
         'dropout': 0.2,
-        'lr_exp': 3,
+        'lr_exp': 2,
         'decay_exp': 5,
         'flip_horizontal': True,
         'rotation': 0,
