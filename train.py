@@ -15,7 +15,7 @@ from data_load import load_data
 from model import get_model
 from keras import Model
 from keras.layers import Dense, Flatten, Dropout
-from keras.optimizers import SGD
+from keras.optimizers import SGD, Adam
 from keras.preprocessing import image
 from sklearn.utils import shuffle
 
@@ -95,7 +95,7 @@ def train(frame_train, frame_valid, frame_test, params):
     lr = pow(10, -params['lr_exp'])
     decay = pow(10, -params['decay_exp'])
 
-    opt = SGD(lr=lr, momentum=0.9, decay=decay)
+    opt = Adam(lr=lr)#SGD(lr=lr, momentum=0.9, decay=decay)
 
     model.compile(optimizer=opt, loss=keras.metrics.mae)
 
@@ -124,8 +124,8 @@ def train(frame_train, frame_valid, frame_test, params):
 if __name__ == "__main__":
     frame_train, frame_valid, frame_test = load_data()
     params = {
-        'dropout': 0.2,
-        'lr_exp': 2,
+        'dropout': 0.25,
+        'lr_exp': 4,
         'decay_exp': 5,
         'flip_horizontal': True,
         'rotation': 0,
