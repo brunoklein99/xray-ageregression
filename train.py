@@ -5,13 +5,15 @@ from os.path import join
 import cv2
 import keras
 import numpy as np
+from keras.applications import ResNet50
+
 from keras.callbacks import ModelCheckpoint
 import matplotlib.pyplot as plt
 
 import settings
 from data_load import load_data
+from model import get_model
 from keras import Model
-from keras.applications import ResNet50
 from keras.layers import Dense, Flatten, Dropout
 from keras.optimizers import SGD
 from keras.preprocessing import image
@@ -86,19 +88,9 @@ def train(frame_train, frame_valid, frame_test, params):
     gen_valid = batch_generator(get_generator(frame_valid, params), settings.BATCH_SIZE, len(frame_valid))
     gen_test = batch_generator(get_generator(frame_test, params, data_augmentation=False), settings.BATCH_SIZE, len(frame_test))
 
-    model = ResNet50(include_top=False, weights=None, input_shape=(settings.IMAGE_SIZE, settings.IMAGE_SIZE, 1))
-    x = Flatten(name='flatten')(model.output)
-    x = Dense(4096, activation='relu', name='fc1')(x)
     drop = params['dropout']
-    if drop > 0:
-        x = Dropout(drop)(x)
-    x = Dense(1024, activation='relu', name='fc2')(x)
-    x = Dense(512, activation='relu', name='fc3')(x)
-    if drop > 0:
-        x = Dropout(drop)(x)
-    x = Dense(128, activation='relu', name='fc4')(x)
-    x = Dense(1, activation='sigmoid', name='predictions')(x)
-    model = Model(model.input, outputs=x)
+
+    model = get_model(input_shape=(settings.IMAGE_SIZE, settings.IMAGE_SIZE, 1), drop=drop)
 
     lr = pow(10, -params['lr_exp'])
     decay = pow(10, -params['decay_exp'])
