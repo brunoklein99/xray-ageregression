@@ -18,7 +18,7 @@ from keras.preprocessing import image
 from sklearn.utils import shuffle
 
 
-def get_generator(f, params):
+def get_generator(f, params, data_augmentation=True):
     while True:
         vals = shuffle(f)
         for imagename, age in zip(vals['Image Index'], vals['Patient Age']):
@@ -32,17 +32,19 @@ def get_generator(f, params):
             x -= np.mean(x)
             x /= np.std(x)
 
-            if params['flip_horizontal']:
-                if np.random.rand() < 0.5:
-                    x = image.flip_axis(x, axis=1)
+            if data_augmentation:
+                if params['flip_horizontal']:
+                    if np.random.rand() < 0.5:
+                        x = image.flip_axis(x, axis=1)
 
-            if params['rotation'] > 0:
-                x = image.random_rotation(x, rg=params['rotation'])
+                rotation = params['rotation']
+                if rotation > 0:
+                    x = image.random_rotation(x, rg=rotation)
 
-            shift_w = params['shift_w']
-            shift_h = params['shift_h']
-            if shift_h > 0 or shift_w > 0:
-                x = image.random_shift(x, wrg=shift_w, hrg=shift_h)
+                shift_w = params['shift_w']
+                shift_h = params['shift_h']
+                if shift_h > 0 or shift_w > 0:
+                    x = image.random_shift(x, wrg=shift_w, hrg=shift_h)
 
             y = age / 100
 
@@ -82,17 +84,19 @@ def save_metric(history, name):
 def train(frame_train, frame_valid, frame_test, params):
     gen_train = batch_generator(get_generator(frame_train, params), settings.BATCH_SIZE, len(frame_train))
     gen_valid = batch_generator(get_generator(frame_valid, params), settings.BATCH_SIZE, len(frame_valid))
-    gen_test = batch_generator(get_generator(frame_test, params), settings.BATCH_SIZE, len(frame_test))
+    gen_test = batch_generator(get_generator(frame_test, params, data_augmentation=False), settings.BATCH_SIZE, len(frame_test))
 
     model = ResNet50(include_top=False, weights=None, input_shape=(settings.IMAGE_SIZE, settings.IMAGE_SIZE, 1))
     x = Flatten(name='flatten')(model.output)
-    x = Dense(4096, activation='relu', name='fc2')(x)
+    x = Dense(4096, activation='relu', name='fc1')(x)
     drop = params['dropout']
     if drop > 0:
         x = Dropout(drop)(x)
-    x = Dense(1024, activation='relu', name='fc3')(x)
-    x = Dense(512, activation='relu', name='fc4')(x)
-    x = Dense(128, activation='relu', name='fc5')(x)
+    x = Dense(1024, activation='relu', name='fc2')(x)
+    x = Dense(512, activation='relu', name='fc3')(x)
+    if drop > 0:
+        x = Dropout(drop)(x)
+    x = Dense(128, activation='relu', name='fc4')(x)
     x = Dense(1, activation='sigmoid', name='predictions')(x)
     model = Model(model.input, outputs=x)
 

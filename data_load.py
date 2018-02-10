@@ -35,6 +35,6 @@ def load_data():
     # shuffle
     frame_train = shuffle(frame_train)
 
-    return frame_train[:200], frame_valid[:200], frame_test[:200]
+    return frame_train, frame_valid, frame_test
 
 
