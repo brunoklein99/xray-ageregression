@@ -16,6 +16,9 @@ def load_data():
     # filter patients which are older than 100 yo
     frame = frame[frame['Patient Age'] <= 100]
 
+    # shuffle
+    frame = shuffle(frame)
+
     # get images name we train / validate on our own discretion
     train_valid_names = open('metadata/train_val_list.txt').read().splitlines()
 
@@ -31,9 +34,6 @@ def load_data():
 
     # oversample train frame
     frame_train = oversample_age_decades(frame_train)
-
-    # shuffle
-    frame_train = shuffle(frame_train)
 
     return frame_train, frame_valid, frame_test
 
